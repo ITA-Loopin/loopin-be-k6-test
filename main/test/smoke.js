@@ -1,58 +1,54 @@
-import http from "k6/http";
-import { check, sleep } from "k6";
-import { BASE_URL } from "../setup/config.js";
-import { loadAccountSetup } from "../setup/loadAccountSetup.js";
-import { loginSetup } from "../setup/loginSetup.js";
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+import {BASE_URL} from "../setup/config.js";
+import {loadAccountSetup} from "../setup/loadAccountSetup.js";
+import {loginSetup} from "../setup/loginSetup.js";
 
 export const options = {
     scenarios: {
-        perf_load: {
+        perf_smoke: {
             executor: "ramping-vus",
             startVUs: 0,
             stages: [
-                { duration: "2m", target: 50 },
-                { duration: "5m", target: 150 },  // typical ~15%
-                { duration: "10m", target: 200 }, // typical ~20%
-                { duration: "3m", target: 400 },  // peak check
-                { duration: "5m", target: 200 },  // recover
-                { duration: "3m", target: 0 },
+                { duration: "30s", target: 5 },   // warm-up
+                { duration: "2m", target: 15 },   // main smoke
+                { duration: "30s", target: 50 },  // mini spike
+                { duration: "30s", target: 5 },   // recover
+                { duration: "30s", target: 0 },   // cool-down
             ],
-            gracefulStop: "30s",
+            gracefulStop: "10s",
         },
     },
     thresholds: {
         http_req_failed: ["rate<0.01"],
-        http_req_duration: ["p(95)<500", "p(99)<900"],
+        http_req_duration: ["p(95)<800"],
     },
 };
 
-// 본인 회원정보 조회
+// 1. 본인 회원정보 조회
 const getMyInfo = `${BASE_URL}/rest-api/v1/member`;
-// 루프 리포트 조회
+// 2. 루프 리포트 조회
 const getLoopReport = `${BASE_URL}/rest-api/v1/report`;
-// 루프 상세 조회 (유저별 loopId 동적)
+// 3. 루프 상세 조회 (유저별 loopId 동적)
 const getDetailLoopUrl = (loopId) => `${BASE_URL}/rest-api/v1/loops/${loopId}`;
-// 날짜별 루프 리스트 조회
+// 4. 날짜별 루프 리스트 조회
 const getDailyLoopsUrl = () => `${BASE_URL}/rest-api/v1/loops/date/${formatToday()}`;
-// 루프 캘린더 조회
+// 5. 루프 캘린더 조회
 const getLoopCalendar = `${BASE_URL}/rest-api/v1/loops/calendar?year=2026&month=1`;
-// 내 팀 리스트 조회
+// 6. 내 팀 리스트 조회
 const getMyTeams = `${BASE_URL}/rest-api/v1/teams/my`;
-// 모집 중인 팀 리스트 조회
+// 7. 모집 중인 팀 리스트 조회
 const getRecruitingTeams = `${BASE_URL}/rest-api/v1/teams/recruiting`;
-// 팀 상세 조회 (유저별 teamId 동적)
+// 8. 팀 상세 조회 (유저별 teamId 동적)
 const getTeamDetailUrl = (teamId) => `${BASE_URL}/rest-api/v1/teams/${teamId}`;
-// 팀 루프 리스트 조회 (유저별 teamId 동적)
+// 9. 팀 루프 리스트 조회 (유저별 teamId 동적)
 const getTeamLoopsUrl = (teamId) => `${BASE_URL}/rest-api/v1/teams/${teamId}/loops`;
-// 팀 루프 상세 조회 (내 루프) (유저별 teamId/teamLoopId 동적)
-const getTeamLoopMyDetailUrl = (teamId, teamLoopId) =>
-    `${BASE_URL}/rest-api/v1/teams/${teamId}/loops/${teamLoopId}/my`;
-// 팀 루프 상세 조회 (팀 루프) (유저별 teamId/teamLoopId 동적)
-const getTeamLoopDetailUrl = (teamId, teamLoopId) =>
-    `${BASE_URL}/rest-api/v1/teams/${teamId}/loops/${teamLoopId}/all`;
-// 팀 루프 캘린더 조회 (유저별 teamId 동적)
-const getTeamLoopCalendarUrl = (teamId) =>
-    `${BASE_URL}/rest-api/v1/teams/${teamId}/loops/calendar?year=2026&month=1`;
+// 10. 팀 루프 상세 조회 (내 루프) (유저별 teamId/teamLoopId 동적)
+const getTeamLoopMyDetailUrl = (teamId, teamLoopId) => `${BASE_URL}/rest-api/v1/teams/${teamId}/loops/${teamLoopId}/my`;
+// 11. 팀 루프 상세 조회 (팀 루프) (유저별 teamId/teamLoopId 동적)
+const getTeamLoopDetailUrl = (teamId, teamLoopId) => `${BASE_URL}/rest-api/v1/teams/${teamId}/loops/${teamLoopId}/all`;
+// 12. 팀 루프 캘린더 조회 (유저별 teamId 동적)
+const getTeamLoopCalendarUrl = (teamId) => `${BASE_URL}/rest-api/v1/teams/${teamId}/loops/calendar?year=2026&month=1`;
 
 // -------------------- setup() --------------------
 export function setup() {
@@ -125,12 +121,41 @@ function firstTeamLoopIdForTeam(teamId) {
     return 1 + (teamId - 1) * 8;
 }
 
+// 응답에서 첫 teamLoopId를 최대한 유연하게 뽑아보기
+function extractFirstTeamLoopId(teamLoopsRes) {
+    const candidatePaths = [
+        // 흔한 케이스들 최대한 커버
+        "data[0].id",
+        "data[0].teamLoopId",
+        "data[0].loopId",
+        "data.content[0].id",
+        "data.content[0].teamLoopId",
+        "data.content[0].loopId",
+        "data.items[0].id",
+        "data.items[0].teamLoopId",
+    ];
+    for (const path of candidatePaths) {
+        const v = teamLoopsRes.json(path);
+        if (typeof v === "number" && v > 0) return v;
+    }
+    // 혹시 문자열 숫자면
+    for (const path of candidatePaths) {
+        const v = teamLoopsRes.json(path);
+        const n = parseInt(v, 10);
+        if (!Number.isNaN(n) && n > 0) return n;
+    }
+    return null;
+}
+
 // -------------------- VU flow --------------------
 export default function (data) {
     const session = pickSession(data);
     const userNo = parseUserNo(session);
+    // 유저별 루프 상세 id: 1, 20, 39 ...
     const loopId = firstLoopIdForUser(userNo);
+    // 유저별 팀 id: 1~10 -> 1, 11~20 -> 2 ...
     const teamId = teamIdForUser(userNo);
+    // 팀별 teamLoopId 시작값(팀당 8개)
     const teamLoopId = firstTeamLoopIdForTeam(teamId);
 
     get(getMyInfo, session, "getMyInfo");
@@ -142,6 +167,7 @@ export default function (data) {
     get(getDailyLoopsUrl(), session, "getDailyLoops");
     sleep(1);
 
+    // ---- 루프 상세 조회: 유저별 loopId 적용 ----
     get(getDetailLoopUrl(loopId), session, `getDetailLoop(loopId=${loopId})`);
     sleep(1);
 
@@ -154,12 +180,15 @@ export default function (data) {
     get(getRecruitingTeams, session, "getRecruitingTeams");
     sleep(1);
 
+    // ---- 팀 상세 조회: 유저별 teamId 적용 ----
     get(getTeamDetailUrl(teamId), session, `getTeamDetail(teamId=${teamId})`);
     sleep(1);
 
+    // ---- 팀 루프 리스트 조회: 유저별 teamId 적용 ----
     const teamLoopsRes = get(getTeamLoopsUrl(teamId), session, `getTeamLoops(teamId=${teamId})`);
     sleep(1);
 
+    // ---- 팀 루프 상세(내/팀): 유저별 teamId/teamLoopId 적용 ----
     get(
         getTeamLoopMyDetailUrl(teamId, teamLoopId),
         session,
@@ -174,6 +203,7 @@ export default function (data) {
     );
     sleep(1);
 
+    // ---- 팀 루프 캘린더: 유저별 teamId 적용 ----
     get(getTeamLoopCalendarUrl(teamId), session, `getTeamLoopCalendar(teamId=${teamId})`);
     sleep(1);
 }
