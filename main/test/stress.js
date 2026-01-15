@@ -1,135 +1,185 @@
 import http from "k6/http";
-import { sleep } from 'k6';
-import { check } from "k6";
-import { loginSetup } from "../setup/loginSetup.js";
+import { check, sleep } from "k6";
 import { BASE_URL } from "../setup/config.js";
-import {stressAccountSetup} from "../setup/stressAccountSetup.js";
+import { loginSetup } from "../setup/loginSetup.js";
+import { loadAccountSetup } from "../setup/loadAccountSetup.js";
 
 export const options = {
-    stages: [
-        { duration: "2m", target: 200 },
-        { duration: "2m", target: 400 },
-        { duration: "2m", target: 600 },
-        { duration: "2m", target: 800 },
-        { duration: "2m", target: 1000 },
-        { duration: "2m", target: 1101 },
-    ],
+    scenarios: {
+        perf_stress_breakpoint: {
+            executor: "ramping-vus",
+            startVUs: 0,
+            stages: [
+                { duration: "2m", target: 200 },
+                { duration: "1m", target: 200 }, // hold
+                { duration: "2m", target: 400 },
+                { duration: "1m", target: 400 }, // hold
+                { duration: "2m", target: 600 },
+                { duration: "1m", target: 600 }, // hold
+                { duration: "2m", target: 800 },
+                { duration: "1m", target: 800 }, // hold
+                { duration: "2m", target: 1000 },
+                { duration: "5m", target: 1000 }, // 여기서 깨지는지/누적되는지 확인
+                { duration: "2m", target: 0 },  // 쿨다운
+            ],
+            gracefulRampDown: "30s",
+        },
+    },
     thresholds: {
-        http_req_duration: ["p(95)<1000"], // 스트레스 조건에서 95% 요청이 1초 이내 응답
+        http_req_failed: ["rate<0.01"],
+        http_req_duration: ["p(95)<1000", "p(99)<2000"],
     },
     setupTimeout: "300s",
 };
 
+// -------------------- endpoints (smoke.js 그대로) --------------------
+// 본인 회원정보 조회
+const getMyInfo = `${BASE_URL}/rest-api/v1/member`;
+// 루프 리포트 조회
+const getLoopReport = `${BASE_URL}/rest-api/v1/report`;
+// 루프 상세 조회 (유저별 loopId 동적)
+const getDetailLoopUrl = (loopId) => `${BASE_URL}/rest-api/v1/loops/${loopId}`;
+// 날짜별 루프 리스트 조회
+const getDailyLoopsUrl = () => `${BASE_URL}/rest-api/v1/loops/date/${formatToday()}`;
+// 루프 캘린더 조회
+const getLoopCalendar = `${BASE_URL}/rest-api/v1/loops/calendar?year=2026&month=1`;
+// 내 팀 리스트 조회
+const getMyTeams = `${BASE_URL}/rest-api/v1/teams/my`;
+// 모집 중인 팀 리스트 조회
+const getRecruitingTeams = `${BASE_URL}/rest-api/v1/teams/recruiting`;
+// 팀 상세 조회 (유저별 teamId 동적)
+const getTeamDetailUrl = (teamId) => `${BASE_URL}/rest-api/v1/teams/${teamId}`;
+// 팀 루프 리스트 조회 (유저별 teamId 동적)
+const getTeamLoopsUrl = (teamId) => `${BASE_URL}/rest-api/v1/teams/${teamId}/loops`;
+// 팀 루프 상세 조회 (내 루프) (유저별 teamId/teamLoopId 동적)
+const getTeamLoopMyDetailUrl = (teamId, teamLoopId) =>
+    `${BASE_URL}/rest-api/v1/teams/${teamId}/loops/${teamLoopId}/my`;
+// 팀 루프 상세 조회 (팀 루프) (유저별 teamId/teamLoopId 동적)
+const getTeamLoopDetailUrl = (teamId, teamLoopId) =>
+    `${BASE_URL}/rest-api/v1/teams/${teamId}/loops/${teamLoopId}/all`;
+// 팀 루프 캘린더 조회 (유저별 teamId 동적)
+const getTeamLoopCalendarUrl = (teamId) =>
+    `${BASE_URL}/rest-api/v1/teams/${teamId}/loops/calendar?year=2026&month=1`;
+
+// -------------------- setup() (smoke.js 패턴 그대로) --------------------
 export function setup() {
-    const users = stressAccountSetup();          // 1101명 생성
-    const tokens = loginSetup(users);     // 로그인 토큰 확보
-    return { tokens };
+    const emails = loadAccountSetup(); // stress용 계정 로더
+    const MAX_SESSIONS = 50; // smoke.js처럼 세션 풀 제한
+    const targetEmails = emails.slice(0, MAX_SESSIONS);
+    const sessions = loginSetup(targetEmails);
+
+    if (!sessions.length) {
+        throw new Error("No sessions created in setup()");
+    }
+    return { sessions };
 }
 
-export default function (data) {
-    const tokens = data.tokens;
-    const token = tokens[(__VU - 1) % tokens.length];
-    const userIndex = (__VU - 1) % tokens.length;
+// -------------------- helpers (smoke.js 그대로) --------------------
+function formatToday() {
+    const d = new Date();
+    const yyyy = String(d.getFullYear());
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+}
 
-    const isStudent = userIndex < 525;
-    const isTeacher = userIndex >= 525 && userIndex < 576;
-    const isParent = userIndex >= 576;
+function pickSession(data) {
+    // VU 별로 안정적으로 하나 고르기: (__VU-1) 기준
+    const sessions = data.sessions;
+    const idx = (__VU - 1) % sessions.length;
+    return sessions[idx];
+}
 
-    const headers = {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
+function authParams(session) {
+    return {
+        cookies: session.cookies,
+        headers: {
+            "Content-Type": "application/json",
+        },
+        tags: {
+            userKey: session.userKey,
+        },
     };
+}
 
-    const requests = [];
+function get(url, session, name) {
+    const res = http.get(url, authParams(session));
+    check(res, {
+        [`${name} status 200`]: (r) => r.status === 200,
+    });
+    return res;
+}
 
-    if (isStudent) {
-        requests.push(
-            { method: "GET", url: `${BASE_URL}/rest-api/v1/member/detail` },
-            { method: "GET", url: `${BASE_URL}/rest-api/v1/attendance/filter?year=1&semester=1` },
-            { method: "GET", url: `${BASE_URL}/rest-api/v1/grade/filter?year=1&semester=1` },
-            { method: "GET", url: `${BASE_URL}/rest-api/v1/feedback/filter?year=1&semester=1` },
-            { method: "GET", url: `${BASE_URL}/rest-api/v1/notification` },
-        );
-    }
+function parseUserNo(session) {
+    const key = String(session.userKey ?? "");
+    const m = key.match(/user(\d+)\@/i) || key.match(/user(\d+)/i);
+    if (m) return parseInt(m[1], 10);
+}
 
-    if (isParent) {
-        const childId = userIndex - 524;
-        requests.push(
-            { method: "GET", url: `${BASE_URL}/rest-api/v1/attendance/filter/${childId}?year=1&semester=1` },
-            { method: "GET", url: `${BASE_URL}/rest-api/v1/grade/filter/${childId}?year=1&semester=1` },
-            { method: "GET", url: `${BASE_URL}/rest-api/v1/feedback/filter/${childId}?year=1&semester=1` },
-            { method: "GET", url: `${BASE_URL}/rest-api/v1/counsel/filter/${childId}?year=1&semester=1` },
-            { method: "GET", url: `${BASE_URL}/rest-api/v1/specialty/filter/${childId}?year=1&semester=1` },
-            { method: "GET", url: `${BASE_URL}/rest-api/v1/notification` },
-        );
-    }
+// 유저당 루프 19개: user1 -> 1, user2 -> 20, user3 -> 39 ...
+function firstLoopIdForUser(userNo) {
+    return 1 + (userNo - 1) * 19;
+}
 
-    if (isTeacher) {
-        requests.push(
-            { method: "GET", url: `${BASE_URL}/rest-api/v1/member/students` },
-            { method: "GET", url: `${BASE_URL}/rest-api/v1/attendance/filter/351?year=1&semester=1` },
-            { method: "GET", url: `${BASE_URL}/rest-api/v1/grade/filter/351?year=1&semester=1` },
-            { method: "GET", url: `${BASE_URL}/rest-api/v1/feedback/filter/351?year=1&semester=1` },
-            { method: "GET", url: `${BASE_URL}/rest-api/v1/counsel/filter/351?year=1&semester=1` },
-            { method: "GET", url: `${BASE_URL}/rest-api/v1/specialty/filter/351?year=1&semester=1` },
-        );
-    }
+// 10명 = 1팀: 1~10 -> 1, 11~20 -> 2 ...
+function teamIdForUser(userNo) {
+    return Math.floor((userNo - 1) / 10) + 1;
+}
 
-    const allowedReturnCodes = [
-        "SUCCESS", "NOT_AUTHORIZED", "INTERNAL_SERVER_ERROR", "USER_NOT_FOUND", "PAGE_REQUEST_FAIL",
-        "INVALID_ACCOUNT_ID", "MEMBER_ALREADY_EXISTS", "INVALID_ROLE", "GRADE_NOT_FOUND", "INVALID_SUBJECT",
-        "ATTENDANCE_NOT_FOUND", "FEEDBACK_NOT_FOUND", "COUNSEL_NOT_FOUND", "SPECIALTY_NOT_FOUND",
-        "INVALID_SEMESTER", "CLASSID_NOT_FOUND", "NOTIFICATION_NOT_FOUND",
-    ];
+// 팀당 teamLoop 8개: team=1 -> 1, team=2 -> 9, team=3 -> 17 ...
+function firstTeamLoopIdForTeam(teamId) {
+    return 1 + (teamId - 1) * 8;
+}
 
-    for (const req of requests) {
-        const res = http.get(req.url, {
-            headers,
-            tags: { custom_url: getCustomUrl(req.url) } // 쿼리 파라미터 제거
-        });
+// -------------------- VU flow (smoke.js 그대로) --------------------
+export default function (data) {
+    const session = pickSession(data);
+    const userNo = parseUserNo(session);
+    const loopId = firstLoopIdForUser(userNo);
+    const teamId = teamIdForUser(userNo);
+    const teamLoopId = firstTeamLoopIdForTeam(teamId);
 
-        let resBody = {};
-        try {
-            resBody = res.json();
-        } catch (e) {
-            console.error(`[ERROR] Invalid JSON from ${req.url}`);
-            continue;
-        }
+    get(getMyInfo, session, "getMyInfo");
+    sleep(1);
 
-        const rc = resBody?.returnCode || "NO_CODE";
-        const isKnownCode = allowedReturnCodes.includes(rc);
-        const label = `${req.method} ${req.url}`;
+    get(getLoopCalendar, session, "getLoopCalendar");
+    sleep(1);
 
-        const passed = check(resBody, {
-            [`${label} - returnCode is known`]: () => isKnownCode,
-        });
+    get(getDailyLoopsUrl(), session, "getDailyLoops");
+    sleep(1);
 
-        if (!passed) {
-            console.warn(`[WARN] Unexpected returnCode for ${label}: ${rc}`);
-            console.warn(`Response body: ${JSON.stringify(resBody)}`);
-        }
+    get(getDetailLoopUrl(loopId), session, `getDetailLoop(loopId=${loopId})`);
+    sleep(1);
 
-        sleep(Math.random() * 3);
-    }
+    get(getLoopReport, session, "getLoopReport");
+    sleep(1);
 
-    function getCustomUrl(url) {
-        const filterIndex = url.indexOf("filter");
-        if (filterIndex === -1) {
-            // filter 없으면 원본 반환
-            return url;
-        }
-        // filter 위치부터 뒤 문자열
-        const afterFilter = url.slice(filterIndex + "filter".length);
+    get(getMyTeams, session, "getMyTeams");
+    sleep(1);
 
-        // 뒤에 ?나 / 중 첫번째 위치 찾기
-        const nextCharIndex = afterFilter.search(/[?/]/);
+    get(getRecruitingTeams, session, "getRecruitingTeams");
+    sleep(1);
 
-        if (nextCharIndex === -1) {
-            // ?나 / 가 없으면 filter 끝까지 반환
-            return url;
-        }
+    get(getTeamDetailUrl(teamId), session, `getTeamDetail(teamId=${teamId})`);
+    sleep(1);
 
-        // filter부터 ? 또는 / 까지 자르기
-        return url.slice(0, filterIndex + "filter".length + nextCharIndex + 1);
-    }
+    get(getTeamLoopsUrl(teamId), session, `getTeamLoops(teamId=${teamId})`);
+    sleep(1);
+
+    get(
+        getTeamLoopMyDetailUrl(teamId, teamLoopId),
+        session,
+        `getTeamLoopMyDetail(teamId=${teamId}, teamLoopId=${teamLoopId})`
+    );
+    sleep(1);
+
+    get(
+        getTeamLoopDetailUrl(teamId, teamLoopId),
+        session,
+        `getTeamLoopDetail(teamId=${teamId}, teamLoopId=${teamLoopId})`
+    );
+    sleep(1);
+
+    get(getTeamLoopCalendarUrl(teamId), session, `getTeamLoopCalendar(teamId=${teamId})`);
+    sleep(1);
 }
