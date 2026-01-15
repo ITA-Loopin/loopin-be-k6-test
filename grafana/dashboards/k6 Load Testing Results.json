@@ -95,8 +95,12 @@
                 "value": 0
               },
               {
-                "color": "red",
-                "value": 80
+                "color": "semi-dark-orange",
+                "value": 0.2
+              },
+              {
+                "color": "semi-dark-red",
+                "value": 0.5
               }
             ]
           },
@@ -211,7 +215,7 @@
               }
             ]
           },
-          "unit": "ms"
+          "unit": "s"
         },
         "overrides": [
           {
@@ -431,8 +435,12 @@
                 "value": 0
               },
               {
-                "color": "red",
-                "value": 80
+                "color": "semi-dark-orange",
+                "value": 0.2
+              },
+              {
+                "color": "semi-dark-red",
+                "value": 0.5
               }
             ]
           },
@@ -505,8 +513,12 @@
                 "value": 0
               },
               {
-                "color": "red",
-                "value": 80
+                "color": "semi-dark-orange",
+                "value": 0.2
+              },
+              {
+                "color": "semi-dark-red",
+                "value": 0.5
               }
             ]
           },
@@ -575,16 +587,16 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "rgba(50, 172, 45, 0.97)",
+                "color": "green",
                 "value": 0
               },
               {
-                "color": "rgba(237, 129, 40, 0.89)",
-                "value": 200
+                "color": "semi-dark-orange",
+                "value": 0.2
               },
               {
-                "color": "rgba(245, 54, 54, 0.9)",
-                "value": 500
+                "color": "semi-dark-red",
+                "value": 0.5
               }
             ]
           },
@@ -653,16 +665,16 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "semi-dark-green",
+                "color": "green",
                 "value": 0
               },
               {
-                "color": "rgba(237, 129, 40, 0.89)",
-                "value": 200
+                "color": "semi-dark-orange",
+                "value": 0.2
               },
               {
-                "color": "rgba(245, 54, 54, 0.9)",
-                "value": 500
+                "color": "semi-dark-red",
+                "value": 0.5
               }
             ]
           },
@@ -739,8 +751,12 @@
                 "value": 0
               },
               {
-                "color": "red",
-                "value": 80
+                "color": "semi-dark-orange",
+                "value": 0.2
+              },
+              {
+                "color": "semi-dark-red",
+                "value": 0.5
               }
             ]
           },
@@ -1055,7 +1071,7 @@
               }
             ]
           },
-          "unit": "short"
+          "unit": "none"
         },
         "overrides": [
           {
@@ -1102,9 +1118,11 @@
       "pluginVersion": "12.3.1",
       "targets": [
         {
-          "expr": "sum(rate(k6_http_reqs_total{expected_response=\"false\"}[1m])) or sum(rate(k6_errors_total[1m]))",
+          "editorMode": "code",
+          "expr": "sum(rate(k6_http_reqs_total{expected_response=\"false\"}[$__rate_interval]))",
           "format": "time_series",
           "legendFormat": "Num Errors",
+          "range": true,
           "refId": "A"
         }
       ],
