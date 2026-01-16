@@ -35,20 +35,18 @@ const getDetailLoopUrl = (loopId) => `${BASE_URL}/rest-api/v1/loops/${loopId}`;
 const getDailyLoopsUrl = () => `${BASE_URL}/rest-api/v1/loops/date/${formatToday()}`;
 // 5. 루프 캘린더 조회
 const getLoopCalendar = `${BASE_URL}/rest-api/v1/loops/calendar?year=2026&month=1`;
-// 6. 내 팀 리스트 조회
-const getMyTeams = `${BASE_URL}/rest-api/v1/teams/my`;
-// 7. 모집 중인 팀 리스트 조회
-const getRecruitingTeams = `${BASE_URL}/rest-api/v1/teams/recruiting`;
-// 8. 팀 상세 조회 (유저별 teamId 동적)
-const getTeamDetailUrl = (teamId) => `${BASE_URL}/rest-api/v1/teams/${teamId}`;
-// 9. 팀 루프 리스트 조회 (유저별 teamId 동적)
-const getTeamLoopsUrl = (teamId) => `${BASE_URL}/rest-api/v1/teams/${teamId}/loops`;
-// 10. 팀 루프 상세 조회 (내 루프) (유저별 teamId/teamLoopId 동적)
-const getTeamLoopMyDetailUrl = (teamId, teamLoopId) => `${BASE_URL}/rest-api/v1/teams/${teamId}/loops/${teamLoopId}/my`;
-// 11. 팀 루프 상세 조회 (팀 루프) (유저별 teamId/teamLoopId 동적)
-const getTeamLoopDetailUrl = (teamId, teamLoopId) => `${BASE_URL}/rest-api/v1/teams/${teamId}/loops/${teamLoopId}/all`;
-// 12. 팀 루프 캘린더 조회 (유저별 teamId 동적)
-const getTeamLoopCalendarUrl = (teamId) => `${BASE_URL}/rest-api/v1/teams/${teamId}/loops/calendar?year=2026&month=1`;
+// // 6. 내 팀 리스트 조회
+// const getMyTeams = `${BASE_URL}/rest-api/v1/teams/my`;
+// // 7. 팀 상세 조회 (유저별 teamId 동적)
+// const getTeamDetailUrl = (teamId) => `${BASE_URL}/rest-api/v1/teams/${teamId}`;
+// // 8. 팀 루프 리스트 조회 (유저별 teamId 동적)
+// const getTeamLoopsUrl = (teamId) => `${BASE_URL}/rest-api/v1/teams/${teamId}/loops`;
+// // 9. 팀 루프 상세 조회 (내 루프) (유저별 teamId/teamLoopId 동적)
+// const getTeamLoopMyDetailUrl = (teamId, teamLoopId) => `${BASE_URL}/rest-api/v1/teams/${teamId}/loops/${teamLoopId}/my`;
+// // 10. 팀 루프 상세 조회 (팀 루프) (유저별 teamId/teamLoopId 동적)
+// const getTeamLoopDetailUrl = (teamId, teamLoopId) => `${BASE_URL}/rest-api/v1/teams/${teamId}/loops/${teamLoopId}/all`;
+// // 11. 팀 루프 캘린더 조회 (유저별 teamId 동적)
+// const getTeamLoopCalendarUrl = (teamId) => `${BASE_URL}/rest-api/v1/teams/${teamId}/loops/calendar?year=2026&month=1`;
 
 // -------------------- setup() --------------------
 export function setup() {
@@ -174,36 +172,33 @@ export default function (data) {
     get(getLoopReport, session, "getLoopReport");
     sleep(1);
 
-    get(getMyTeams, session, "getMyTeams");
-    sleep(1);
-
-    get(getRecruitingTeams, session, "getRecruitingTeams");
-    sleep(1);
-
-    // ---- 팀 상세 조회: 유저별 teamId 적용 ----
-    get(getTeamDetailUrl(teamId), session, `getTeamDetail(teamId=${teamId})`);
-    sleep(1);
-
-    // ---- 팀 루프 리스트 조회: 유저별 teamId 적용 ----
-    const teamLoopsRes = get(getTeamLoopsUrl(teamId), session, `getTeamLoops(teamId=${teamId})`);
-    sleep(1);
-
-    // ---- 팀 루프 상세(내/팀): 유저별 teamId/teamLoopId 적용 ----
-    get(
-        getTeamLoopMyDetailUrl(teamId, teamLoopId),
-        session,
-        `getTeamLoopMyDetail(teamId=${teamId}, teamLoopId=${teamLoopId})`
-    );
-    sleep(1);
-
-    get(
-        getTeamLoopDetailUrl(teamId, teamLoopId),
-        session,
-        `getTeamLoopDetail(teamId=${teamId}, teamLoopId=${teamLoopId})`
-    );
-    sleep(1);
-
-    // ---- 팀 루프 캘린더: 유저별 teamId 적용 ----
-    get(getTeamLoopCalendarUrl(teamId), session, `getTeamLoopCalendar(teamId=${teamId})`);
-    sleep(1);
+    // get(getMyTeams, session, "getMyTeams");
+    // sleep(1);
+    //
+    // // ---- 팀 상세 조회: 유저별 teamId 적용 ----
+    // get(getTeamDetailUrl(teamId), session, `getTeamDetail(teamId=${teamId})`);
+    // sleep(1);
+    //
+    // // ---- 팀 루프 리스트 조회: 유저별 teamId 적용 ----
+    // const teamLoopsRes = get(getTeamLoopsUrl(teamId), session, `getTeamLoops(teamId=${teamId})`);
+    // sleep(1);
+    //
+    // // ---- 팀 루프 상세(내/팀): 유저별 teamId/teamLoopId 적용 ----
+    // get(
+    //     getTeamLoopMyDetailUrl(teamId, teamLoopId),
+    //     session,
+    //     `getTeamLoopMyDetail(teamId=${teamId}, teamLoopId=${teamLoopId})`
+    // );
+    // sleep(1);
+    //
+    // get(
+    //     getTeamLoopDetailUrl(teamId, teamLoopId),
+    //     session,
+    //     `getTeamLoopDetail(teamId=${teamId}, teamLoopId=${teamLoopId})`
+    // );
+    // sleep(1);
+    //
+    // // ---- 팀 루프 캘린더: 유저별 teamId 적용 ----
+    // get(getTeamLoopCalendarUrl(teamId), session, `getTeamLoopCalendar(teamId=${teamId})`);
+    // sleep(1);
 }
